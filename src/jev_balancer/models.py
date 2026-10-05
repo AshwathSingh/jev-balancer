@@ -74,10 +74,10 @@ class _FrozenProbabilities(Mapping[DurationClass, float]):
 
         return len(self._items)
 
-    def __deepcopy__(self, memo: dict[int, object]) -> dict[DurationClass, float]:
-        """Return a plain dictionary for ``dataclasses.asdict`` serialization."""
+    def __deepcopy__(self, memo: dict[int, object]) -> _FrozenProbabilities:
+        """Return this immutable value unchanged when copied."""
 
-        return dict(self._items)
+        return self
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +197,20 @@ class DurationPrediction:
 
         object.__setattr__(self, "probabilities", _FrozenProbabilities(probabilities))
 
+    def to_dict(self) -> dict[str, object]:
+        """Return a JSON-ready representation for traces and benchmark output."""
+
+        return {
+            "probabilities": {
+                duration_class.value: probability
+                for duration_class, probability in self.probabilities.items()
+            },
+            "expected_service_ms": self.expected_service_ms,
+            "confidence": self.confidence,
+            "predictor": self.predictor,
+            "overhead_ms": self.overhead_ms,
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class RoutingDecision:
@@ -237,3 +251,17 @@ class RoutingDecision:
 
         backlog_done_at = self.decided_at_ms + self.estimated_backlog_ms
         return backlog_done_at + self.estimated_service_ms
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a JSON-ready representation for an auditable decision trace."""
+
+        return {
+            "request_id": self.request_id,
+            "worker_id": self.worker_id,
+            "policy": self.policy,
+            "decided_at_ms": self.decided_at_ms,
+            "estimated_service_ms": self.estimated_service_ms,
+            "estimated_backlog_ms": self.estimated_backlog_ms,
+            "estimated_finish_ms": self.estimated_finish_ms,
+            "prediction": self.prediction.to_dict() if self.prediction else None,
+        }

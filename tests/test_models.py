@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
+from copy import deepcopy
 from math import inf, nan
 
 import pytest
@@ -130,13 +130,20 @@ def test_duration_prediction_rejects_plain_string_probability_keys() -> None:
         )
 
 
-def test_duration_prediction_supports_dataclass_and_json_serialization() -> None:
-    serialized = asdict(make_prediction())
+def test_duration_prediction_remains_immutable_after_deepcopy() -> None:
+    prediction = deepcopy(make_prediction())
+
+    with pytest.raises(TypeError):
+        prediction.probabilities[DurationClass.SHORT] = 0.0  # type: ignore[index]
+
+
+def test_duration_prediction_supports_json_serialization() -> None:
+    serialized = make_prediction().to_dict()
 
     assert serialized["probabilities"] == {
-        DurationClass.SHORT: 0.7,
-        DurationClass.MEDIUM: 0.2,
-        DurationClass.LONG: 0.1,
+        "short": 0.7,
+        "medium": 0.2,
+        "long": 0.1,
     }
     json.dumps(serialized)
 
@@ -188,3 +195,20 @@ def test_routing_decision_exposes_estimated_finish_time() -> None:
     )
 
     assert decision.estimated_finish_ms == 325.0
+
+
+def test_routing_decision_supports_json_serialization() -> None:
+    decision = RoutingDecision(
+        request_id="request-1",
+        worker_id="worker-2",
+        policy="semantic-work",
+        decided_at_ms=25.0,
+        estimated_service_ms=100.0,
+        estimated_backlog_ms=200.0,
+        prediction=make_prediction(),
+    )
+
+    serialized = decision.to_dict()
+
+    assert serialized["estimated_finish_ms"] == 325.0
+    json.dumps(serialized)
