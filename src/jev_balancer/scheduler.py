@@ -56,7 +56,9 @@ class SchedulingChoice:
 class SchedulingPolicy(Protocol):
     """Structural interface implemented by every simulator scheduling policy."""
 
-    name: str
+    @property
+    def name(self) -> str:
+        """Return the stable identifier used in benchmark reports."""
 
     def reset(self) -> None:
         """Reset mutable policy state before a simulation run."""
