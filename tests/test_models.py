@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from copy import deepcopy
 from math import inf, nan
 
 import pytest
@@ -54,6 +56,20 @@ def test_work_item_requires_valid_arrival(arrival_ms: float) -> None:
         make_item(arrival_ms=arrival_ms)
 
 
+@pytest.mark.parametrize("input_units", [-1, 1.5, True])
+def test_work_item_requires_a_nonnegative_integer_input_count(
+    input_units: object,
+) -> None:
+    with pytest.raises(ValueError, match="input_units"):
+        make_item(input_units=input_units)
+
+
+@pytest.mark.parametrize("sla_ms", [0.0, -1.0, inf, nan])
+def test_work_item_requires_a_positive_sla(sla_ms: float) -> None:
+    with pytest.raises(ValueError, match="sla_ms"):
+        make_item(sla_ms=sla_ms)
+
+
 def test_trace_truth_is_separate_from_scheduler_visible_item() -> None:
     item = make_item()
     trace_job = TraceJob(item=item, service_ms=250.0, duration_class=DurationClass.LONG)
@@ -68,9 +84,28 @@ def test_trace_job_requires_positive_service_time(service_ms: float) -> None:
         TraceJob(item=make_item(), service_ms=service_ms)
 
 
-def test_worker_snapshot_rejects_negative_load() -> None:
+@pytest.mark.parametrize("job_count", [-1, 1.5, True])
+def test_worker_snapshot_requires_a_nonnegative_integer_job_count(
+    job_count: object,
+) -> None:
     with pytest.raises(ValueError, match="job_count"):
-        WorkerSnapshot(worker_id="worker-1", job_count=-1, estimated_backlog_ms=0)
+        WorkerSnapshot(
+            worker_id="worker-1",
+            job_count=job_count,  # type: ignore[arg-type]
+            estimated_backlog_ms=0,
+        )
+
+
+@pytest.mark.parametrize("estimated_backlog_ms", [-1.0, inf, nan])
+def test_worker_snapshot_requires_valid_backlog(
+    estimated_backlog_ms: float,
+) -> None:
+    with pytest.raises(ValueError, match="estimated_backlog_ms"):
+        WorkerSnapshot(
+            worker_id="worker-1",
+            job_count=0,
+            estimated_backlog_ms=estimated_backlog_ms,
+        )
 
 
 def test_duration_prediction_copies_and_freezes_probabilities() -> None:
@@ -86,6 +121,31 @@ def test_duration_prediction_copies_and_freezes_probabilities() -> None:
     assert prediction.probabilities[DurationClass.SHORT] == 0.7
     with pytest.raises(TypeError):
         prediction.probabilities[DurationClass.SHORT] = 0.0  # type: ignore[index]
+
+
+def test_duration_prediction_rejects_plain_string_probability_keys() -> None:
+    with pytest.raises(ValueError, match="DurationClass"):
+        make_prediction(
+            probabilities={"short": 0.7, "medium": 0.2, "long": 0.1},
+        )
+
+
+def test_duration_prediction_remains_immutable_after_deepcopy() -> None:
+    prediction = deepcopy(make_prediction())
+
+    with pytest.raises(TypeError):
+        prediction.probabilities[DurationClass.SHORT] = 0.0  # type: ignore[index]
+
+
+def test_duration_prediction_supports_json_serialization() -> None:
+    serialized = make_prediction().to_dict()
+
+    assert serialized["probabilities"] == {
+        "short": 0.7,
+        "medium": 0.2,
+        "long": 0.1,
+    }
+    json.dumps(serialized)
 
 
 @pytest.mark.parametrize(
@@ -117,6 +177,12 @@ def test_duration_prediction_rejects_invalid_confidence(confidence: float) -> No
         make_prediction(confidence=confidence)
 
 
+@pytest.mark.parametrize("overhead_ms", [-1.0, inf, nan])
+def test_duration_prediction_rejects_invalid_overhead(overhead_ms: float) -> None:
+    with pytest.raises(ValueError, match="overhead_ms"):
+        make_prediction(overhead_ms=overhead_ms)
+
+
 def test_routing_decision_exposes_estimated_finish_time() -> None:
     decision = RoutingDecision(
         request_id="request-1",
@@ -129,3 +195,20 @@ def test_routing_decision_exposes_estimated_finish_time() -> None:
     )
 
     assert decision.estimated_finish_ms == 325.0
+
+
+def test_routing_decision_supports_json_serialization() -> None:
+    decision = RoutingDecision(
+        request_id="request-1",
+        worker_id="worker-2",
+        policy="semantic-work",
+        decided_at_ms=25.0,
+        estimated_service_ms=100.0,
+        estimated_backlog_ms=200.0,
+        prediction=make_prediction(),
+    )
+
+    serialized = decision.to_dict()
+
+    assert serialized["estimated_finish_ms"] == 325.0
+    json.dumps(serialized)
