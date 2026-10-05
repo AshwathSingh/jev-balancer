@@ -222,7 +222,7 @@ class RoutingDecision:
         policy: Non-empty name of the scheduling policy.
         decided_at_ms: Non-negative decision time on the simulation clock.
         estimated_service_ms: Positive service-time estimate for the request.
-        estimated_backlog_ms: Worker backlog immediately before assignment.
+        estimated_backlog_ms: Worker backlog observed when routing began.
         prediction: Optional semantic prediction supporting the decision.
     """
 

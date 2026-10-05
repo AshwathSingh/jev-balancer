@@ -8,6 +8,8 @@ before introducing live Jev calls or an HTTP gateway.
 
 See the [v0.1 experiment design](docs/v0.1-experiment-design.md) for the
 research question, scheduler policies, metrics, and acceptance criteria.
+The [simulator guide](docs/simulator.md) documents the execution model and
+policy interface.
 
 ## Development
 

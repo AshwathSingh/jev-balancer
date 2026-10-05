@@ -1,0 +1,79 @@
+"""Interfaces shared by scheduling policies and the simulator."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from math import isclose, isfinite
+from typing import Protocol
+
+from jev_balancer.models import DurationPrediction, WorkerSnapshot, WorkItem
+
+
+@dataclass(frozen=True, slots=True)
+class SchedulingChoice:
+    """A policy's proposed worker assignment.
+
+    The simulator converts this proposal into a complete
+    :class:`~jev_balancer.models.RoutingDecision`. Keeping request identity,
+    policy identity, and timestamps out of the proposal prevents policies from
+    creating inconsistent audit records.
+
+    Attributes:
+        worker_id: Identifier of the worker selected from the supplied snapshot.
+        estimated_service_ms: Positive estimated runtime for the new job.
+        decision_latency_ms: Non-negative time spent making this choice.
+        prediction: Optional semantic prediction supporting the estimate.
+    """
+
+    worker_id: str
+    estimated_service_ms: float
+    decision_latency_ms: float = 0.0
+    prediction: DurationPrediction | None = None
+
+    def __post_init__(self) -> None:
+        """Validate identifiers, timing values, and prediction consistency."""
+
+        if not self.worker_id.strip():
+            raise ValueError("worker_id must not be empty")
+        if not isfinite(self.estimated_service_ms) or self.estimated_service_ms <= 0:
+            raise ValueError("estimated_service_ms must be finite and positive")
+        if not isfinite(self.decision_latency_ms) or self.decision_latency_ms < 0:
+            raise ValueError("decision_latency_ms must be finite and non-negative")
+
+        if self.prediction is None:
+            return
+        if not isclose(
+            self.estimated_service_ms,
+            self.prediction.expected_service_ms,
+            rel_tol=1e-9,
+            abs_tol=1e-9,
+        ):
+            raise ValueError("estimated_service_ms must match the prediction")
+        if self.decision_latency_ms < self.prediction.overhead_ms:
+            raise ValueError("decision_latency_ms must include prediction overhead")
+
+
+class SchedulingPolicy(Protocol):
+    """Structural interface implemented by every simulator scheduling policy."""
+
+    name: str
+
+    def reset(self) -> None:
+        """Reset mutable policy state before a simulation run."""
+
+    def choose(
+        self,
+        item: WorkItem,
+        workers: tuple[WorkerSnapshot, ...],
+        now_ms: float,
+    ) -> SchedulingChoice:
+        """Choose a worker using only scheduler-visible request and load data.
+
+        Args:
+            item: The arriving request. It never contains true service time.
+            workers: Stable worker snapshots ordered by worker identifier.
+            now_ms: Time at which the single dispatcher starts this decision.
+
+        Returns:
+            A worker choice, service-time estimate, and decision latency.
+        """
