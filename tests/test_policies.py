@@ -61,6 +61,17 @@ def test_mean_work_uses_estimated_backlog() -> None:
     assert choice.estimated_service_ms == 25
 
 
+def test_mean_work_fits_training_service_mean() -> None:
+    policy = MeanWorkPolicy.from_jobs(
+        [
+            TraceJob(make_item("a"), service_ms=10),
+            TraceJob(make_item("b"), service_ms=30),
+        ]
+    )
+
+    assert policy.mean_service_ms == 20
+
+
 def test_input_regression_estimates_from_request_size() -> None:
     policy = InputRegressionPolicy(
         intercept_ms=2,
@@ -82,6 +93,26 @@ def test_input_regression_applies_minimum_estimate() -> None:
     )
 
     assert policy.estimate_service_ms(make_item(input_units=0)) == 2
+
+
+def test_input_regression_fits_training_coefficients() -> None:
+    policy = InputRegressionPolicy.from_jobs(
+        [
+            TraceJob(make_item("a", input_units=1), service_ms=5),
+            TraceJob(make_item("b", input_units=2), service_ms=8),
+            TraceJob(make_item("c", input_units=3), service_ms=11),
+        ]
+    )
+
+    assert policy.intercept_ms == pytest.approx(2)
+    assert policy.slope_ms_per_unit == pytest.approx(3)
+
+
+def test_fitted_baselines_require_training_jobs() -> None:
+    with pytest.raises(ValueError, match="training job"):
+        MeanWorkPolicy.from_jobs([])
+    with pytest.raises(ValueError, match="training job"):
+        InputRegressionPolicy.from_jobs([])
 
 
 def test_oracle_uses_true_trace_service_time() -> None:

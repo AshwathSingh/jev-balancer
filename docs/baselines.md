@@ -15,9 +15,10 @@ The example replays one immutable trace through five policies:
 - `InputRegressionPolicy` predicts runtime from request size without semantics.
 - `OracleWorkPolicy` uses actual runtime as an unattainable upper bound.
 
-The mean and regression coefficients must eventually be fitted on training
-data, not on the trace being evaluated. The oracle is never a deployable
-scheduler and must not be presented as one.
+Fit the mean and regression coefficients on training data with
+`MeanWorkPolicy.from_jobs()` and `InputRegressionPolicy.from_jobs()`. Never fit
+them on the trace being evaluated. The oracle is not a deployable scheduler and
+must not be presented as one.
 
 ## Metrics
 

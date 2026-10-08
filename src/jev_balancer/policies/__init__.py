@@ -7,6 +7,7 @@ from jev_balancer.policies.baselines import (
     OracleWorkPolicy,
     RoundRobinPolicy,
 )
+from jev_balancer.policies.semantic import SemanticWorkPolicy
 
 __all__ = [
     "InputRegressionPolicy",
@@ -14,4 +15,5 @@ __all__ = [
     "MeanWorkPolicy",
     "OracleWorkPolicy",
     "RoundRobinPolicy",
+    "SemanticWorkPolicy",
 ]

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from math import isfinite
+from statistics import fmean
 from types import MappingProxyType
 
 from jev_balancer.models import TraceJob, WorkerSnapshot, WorkItem
@@ -141,6 +142,23 @@ class MeanWorkPolicy:
         _require_positive(self.mean_service_ms, "mean_service_ms")
         _require_nonnegative(self.decision_latency_ms, "decision_latency_ms")
 
+    @classmethod
+    def from_jobs(
+        cls,
+        jobs: Iterable[TraceJob],
+        *,
+        decision_latency_ms: float = 0.0,
+    ) -> MeanWorkPolicy:
+        """Fit the historical mean from a non-empty training trace."""
+
+        training_jobs = tuple(jobs)
+        if not training_jobs:
+            raise ValueError("at least one training job is required")
+        return cls(
+            mean_service_ms=fmean(job.service_ms for job in training_jobs),
+            decision_latency_ms=decision_latency_ms,
+        )
+
     def reset(self) -> None:
         """Reset state; this policy is stateless."""
 
@@ -182,6 +200,51 @@ class InputRegressionPolicy:
         _require_nonnegative(self.slope_ms_per_unit, "slope_ms_per_unit")
         _require_positive(self.minimum_service_ms, "minimum_service_ms")
         _require_nonnegative(self.decision_latency_ms, "decision_latency_ms")
+
+    @classmethod
+    def from_jobs(
+        cls,
+        jobs: Iterable[TraceJob],
+        *,
+        minimum_service_ms: float = 1.0,
+        decision_latency_ms: float = 0.0,
+    ) -> InputRegressionPolicy:
+        """Fit non-negative least-squares coefficients on a training trace.
+
+        A trace with no variation in ``input_units`` falls back to its mean
+        service time as the intercept and a zero slope.
+        """
+
+        training_jobs = tuple(jobs)
+        if not training_jobs:
+            raise ValueError("at least one training job is required")
+        input_values = [float(job.item.input_units) for job in training_jobs]
+        service_values = [job.service_ms for job in training_jobs]
+        mean_input = fmean(input_values)
+        mean_service = fmean(service_values)
+        denominator = sum((value - mean_input) ** 2 for value in input_values)
+        if denominator == 0:
+            slope = 0.0
+        else:
+            slope = max(
+                0.0,
+                sum(
+                    (input_value - mean_input) * (service_value - mean_service)
+                    for input_value, service_value in zip(
+                        input_values,
+                        service_values,
+                        strict=True,
+                    )
+                )
+                / denominator,
+            )
+        intercept = max(0.0, mean_service - slope * mean_input)
+        return cls(
+            intercept_ms=intercept,
+            slope_ms_per_unit=slope,
+            minimum_service_ms=minimum_service_ms,
+            decision_latency_ms=decision_latency_ms,
+        )
 
     def reset(self) -> None:
         """Reset state; this policy is stateless."""

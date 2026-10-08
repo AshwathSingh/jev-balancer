@@ -14,11 +14,19 @@ The [baseline guide](docs/baselines.md) explains the conventional comparison
 policies and metrics.
 The [workload guide](docs/workloads.md) covers deterministic generation, JSONL
 replay, and chronological train/evaluation splits.
+The [semantic predictor guide](docs/semantic-predictor.md) explains training,
+probability quality, overhead, and the semantic scheduling policy.
 
 Run the current baseline experiment with:
 
 ```bash
 uv run python examples/benchmark_baselines.py
+```
+
+Run the semantic signal-strength comparison with:
+
+```bash
+uv run python examples/benchmark_semantic.py
 ```
 
 ## Development

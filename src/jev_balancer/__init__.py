@@ -25,6 +25,13 @@ from jev_balancer.policies import (
     MeanWorkPolicy,
     OracleWorkPolicy,
     RoundRobinPolicy,
+    SemanticWorkPolicy,
+)
+from jev_balancer.predictors import (
+    DurationPredictor,
+    PredictionMetrics,
+    SemanticNaiveBayesPredictor,
+    evaluate_predictions,
 )
 from jev_balancer.scheduler import SchedulingChoice, SchedulingPolicy
 from jev_balancer.simulation import JobExecution, SimulationResult, simulate
@@ -47,6 +54,7 @@ __all__ = [
     "BenchmarkReport",
     "DurationClass",
     "DurationPrediction",
+    "DurationPredictor",
     "InputRegressionPolicy",
     "JobExecution",
     "LatencySummary",
@@ -54,10 +62,13 @@ __all__ = [
     "MeanWorkPolicy",
     "OracleWorkPolicy",
     "PolicyBenchmark",
+    "PredictionMetrics",
     "RoundRobinPolicy",
     "RoutingDecision",
     "SchedulingChoice",
     "SchedulingPolicy",
+    "SemanticNaiveBayesPredictor",
+    "SemanticWorkPolicy",
     "ServiceDistribution",
     "SimulationResult",
     "SyntheticWorkloadConfig",
@@ -70,6 +81,7 @@ __all__ = [
     "calculate_metrics",
     "chronological_split",
     "deserialize_jsonl",
+    "evaluate_predictions",
     "generate_workload",
     "read_jsonl",
     "serialize_jsonl",
