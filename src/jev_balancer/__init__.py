@@ -28,8 +28,21 @@ from jev_balancer.policies import (
 )
 from jev_balancer.scheduler import SchedulingChoice, SchedulingPolicy
 from jev_balancer.simulation import JobExecution, SimulationResult, simulate
+from jev_balancer.workloads import (
+    ArrivalPattern,
+    ServiceDistribution,
+    SyntheticWorkloadConfig,
+    WorkloadSplit,
+    chronological_split,
+    deserialize_jsonl,
+    generate_workload,
+    read_jsonl,
+    serialize_jsonl,
+    write_jsonl,
+)
 
 __all__ = [
+    "ArrivalPattern",
     "BenchmarkMetrics",
     "BenchmarkReport",
     "DurationClass",
@@ -45,12 +58,21 @@ __all__ = [
     "RoutingDecision",
     "SchedulingChoice",
     "SchedulingPolicy",
+    "ServiceDistribution",
     "SimulationResult",
+    "SyntheticWorkloadConfig",
     "TraceJob",
     "WorkItem",
     "WorkerSnapshot",
     "WorkerUtilization",
+    "WorkloadSplit",
     "benchmark_policies",
     "calculate_metrics",
+    "chronological_split",
+    "deserialize_jsonl",
+    "generate_workload",
+    "read_jsonl",
+    "serialize_jsonl",
     "simulate",
+    "write_jsonl",
 ]

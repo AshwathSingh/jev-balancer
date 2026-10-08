@@ -12,6 +12,8 @@ The [simulator guide](docs/simulator.md) documents the execution model and
 policy interface.
 The [baseline guide](docs/baselines.md) explains the conventional comparison
 policies and metrics.
+The [workload guide](docs/workloads.md) covers deterministic generation, JSONL
+replay, and chronological train/evaluation splits.
 
 Run the current baseline experiment with:
 
