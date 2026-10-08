@@ -1,4 +1,4 @@
-"""Conventional scheduling policies and an oracle comparison bound."""
+"""Conventional policies and a greedy perfect-information comparator."""
 
 from __future__ import annotations
 
@@ -149,7 +149,18 @@ class MeanWorkPolicy:
         *,
         decision_latency_ms: float = 0.0,
     ) -> MeanWorkPolicy:
-        """Fit the historical mean from a non-empty training trace."""
+        """Fit the historical mean from a non-empty training trace.
+
+        Args:
+            jobs: Historical jobs whose service times are available for fitting.
+            decision_latency_ms: Simulated routing overhead per request.
+
+        Returns:
+            A policy whose estimate is the mean training service time in ms.
+
+        Raises:
+            ValueError: If the training trace is empty or latency is invalid.
+        """
 
         training_jobs = tuple(jobs)
         if not training_jobs:
@@ -213,6 +224,17 @@ class InputRegressionPolicy:
 
         A trace with no variation in ``input_units`` falls back to its mean
         service time as the intercept and a zero slope.
+
+        Args:
+            jobs: Historical jobs whose sizes and service times are available.
+            minimum_service_ms: Positive lower bound applied to predictions.
+            decision_latency_ms: Simulated routing overhead per request.
+
+        Returns:
+            A fitted non-semantic input-size regression policy.
+
+        Raises:
+            ValueError: If the training trace is empty or options are invalid.
         """
 
         training_jobs = tuple(jobs)
@@ -222,12 +244,27 @@ class InputRegressionPolicy:
         service_values = [job.service_ms for job in training_jobs]
         mean_input = fmean(input_values)
         mean_service = fmean(service_values)
-        denominator = sum((value - mean_input) ** 2 for value in input_values)
-        if denominator == 0:
-            slope = 0.0
-        else:
-            slope = max(
-                0.0,
+        candidates = [(mean_service, 0.0)]
+        origin_denominator = sum(value**2 for value in input_values)
+        if origin_denominator > 0:
+            candidates.append(
+                (
+                    0.0,
+                    sum(
+                        input_value * service_value
+                        for input_value, service_value in zip(
+                            input_values,
+                            service_values,
+                            strict=True,
+                        )
+                    )
+                    / origin_denominator,
+                )
+            )
+
+        centered_denominator = sum((value - mean_input) ** 2 for value in input_values)
+        if centered_denominator > 0:
+            unconstrained_slope = (
                 sum(
                     (input_value - mean_input) * (service_value - mean_service)
                     for input_value, service_value in zip(
@@ -236,9 +273,23 @@ class InputRegressionPolicy:
                         strict=True,
                     )
                 )
-                / denominator,
+                / centered_denominator
             )
-        intercept = max(0.0, mean_service - slope * mean_input)
+            unconstrained_intercept = mean_service - unconstrained_slope * mean_input
+            if unconstrained_intercept >= 0 and unconstrained_slope >= 0:
+                candidates.append((unconstrained_intercept, unconstrained_slope))
+
+        intercept, slope = min(
+            candidates,
+            key=lambda coefficients: sum(
+                (coefficients[0] + coefficients[1] * input_value - service_value) ** 2
+                for input_value, service_value in zip(
+                    input_values,
+                    service_values,
+                    strict=True,
+                )
+            ),
+        )
         return cls(
             intercept_ms=intercept,
             slope_ms_per_unit=slope,
@@ -273,10 +324,11 @@ class InputRegressionPolicy:
 
 @dataclass(frozen=True, slots=True)
 class OracleWorkPolicy:
-    """Upper bound that schedules with true service times.
+    """Greedy comparator that schedules with true service times.
 
     This policy is intentionally ineligible as a real scheduler. It exists only
-    to show the best result achievable with perfect duration information.
+    to isolate duration-estimation error while retaining the same greedy routing
+    rule. It is not an optimal scheduler or a bound on every reported metric.
     """
 
     service_times_ms: Mapping[str, float]

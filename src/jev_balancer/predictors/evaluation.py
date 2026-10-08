@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from statistics import fmean
+from types import MappingProxyType
 
 from jev_balancer.models import DurationClass, TraceJob
 from jev_balancer.predictors.base import DurationPredictor
@@ -17,6 +18,9 @@ class PredictionMetrics:
     Attributes:
         predictor_name: Stable predictor identifier.
         evaluated_jobs: Number of held-out predictions scored.
+        class_support: Evaluation count for each ground-truth class.
+        class_recall: Correct classification rate within each ground-truth
+            class, or ``None`` when that class is absent.
         class_accuracy: Fraction whose most likely class matched truth.
         brier_score: Mean multiclass squared probability error; lower is better.
         expected_calibration_error: Confidence/accuracy gap across equal bins.
@@ -26,6 +30,8 @@ class PredictionMetrics:
 
     predictor_name: str
     evaluated_jobs: int
+    class_support: Mapping[DurationClass, int]
+    class_recall: Mapping[DurationClass, float | None]
     class_accuracy: float
     brier_score: float
     expected_calibration_error: float
@@ -38,6 +44,14 @@ class PredictionMetrics:
         return {
             "predictor": self.predictor_name,
             "evaluated_jobs": self.evaluated_jobs,
+            "class_support": {
+                duration_class.value: count
+                for duration_class, count in self.class_support.items()
+            },
+            "class_recall": {
+                duration_class.value: recall
+                for duration_class, recall in self.class_recall.items()
+            },
             "class_accuracy": self.class_accuracy,
             "brier_score": self.brier_score,
             "expected_calibration_error": self.expected_calibration_error,
@@ -83,6 +97,8 @@ def evaluate_predictions(
     overheads_ms: list[float] = []
     bin_confidences: list[list[float]] = [[] for _ in range(calibration_bins)]
     bin_correctness: list[list[float]] = [[] for _ in range(calibration_bins)]
+    class_support = {duration_class: 0 for duration_class in DurationClass}
+    class_correct = {duration_class: 0 for duration_class in DurationClass}
 
     for job in evaluation_jobs:
         prediction = predictor.predict(job.item)
@@ -94,6 +110,8 @@ def evaluate_predictions(
         assert actual_class is not None
         is_correct = float(predicted_class is actual_class)
         correctness.append(is_correct)
+        class_support[actual_class] += 1
+        class_correct[actual_class] += int(is_correct)
         brier_scores.append(
             sum(
                 (
@@ -106,11 +124,9 @@ def evaluate_predictions(
         )
         absolute_errors_ms.append(abs(prediction.expected_service_ms - job.service_ms))
         overheads_ms.append(prediction.overhead_ms)
-        bin_index = min(
-            int(prediction.confidence * calibration_bins),
-            calibration_bins - 1,
-        )
-        bin_confidences[bin_index].append(prediction.confidence)
+        top_probability = prediction.probabilities[predicted_class]
+        bin_index = min(int(top_probability * calibration_bins), calibration_bins - 1)
+        bin_confidences[bin_index].append(top_probability)
         bin_correctness[bin_index].append(is_correct)
 
     evaluated_jobs = len(evaluation_jobs)
@@ -124,6 +140,17 @@ def evaluate_predictions(
     return PredictionMetrics(
         predictor_name=predictor.name,
         evaluated_jobs=evaluated_jobs,
+        class_support=MappingProxyType(class_support),
+        class_recall=MappingProxyType(
+            {
+                duration_class: (
+                    class_correct[duration_class] / class_support[duration_class]
+                    if class_support[duration_class]
+                    else None
+                )
+                for duration_class in DurationClass
+            }
+        ),
         class_accuracy=fmean(correctness),
         brier_score=fmean(brier_scores),
         expected_calibration_error=expected_calibration_error,

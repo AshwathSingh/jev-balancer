@@ -13,12 +13,14 @@ The example replays one immutable trace through five policies:
 - `LeastJobsPolicy` chooses the shortest visible queue.
 - `MeanWorkPolicy` converts every queued job into one historical mean runtime.
 - `InputRegressionPolicy` predicts runtime from request size without semantics.
-- `OracleWorkPolicy` uses actual runtime as an unattainable upper bound.
+- `OracleWorkPolicy` uses actual runtime in the same greedy routing rule as a
+  non-deployable perfect-information comparator.
 
 Fit the mean and regression coefficients on training data with
 `MeanWorkPolicy.from_jobs()` and `InputRegressionPolicy.from_jobs()`. Never fit
-them on the trace being evaluated. The oracle is not a deployable scheduler and
-must not be presented as one.
+them on the trace being evaluated. The oracle is not deployable, globally
+optimal, or an upper bound on every metric; another policy can outperform it on
+a particular percentile or SLA objective.
 
 ## Metrics
 

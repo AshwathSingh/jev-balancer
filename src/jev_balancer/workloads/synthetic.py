@@ -54,7 +54,7 @@ class SyntheticWorkloadConfig:
         min_service_ms: Smallest generated service time.
         max_service_ms: Largest generated service time.
         pareto_shape: Shape parameter used by the heavy-tailed distribution.
-        sla_multiplier: Optional service-time multiplier used to create SLAs.
+        sla_ms: Optional fixed response-time objective applied to every job.
     """
 
     job_count: int
@@ -68,7 +68,7 @@ class SyntheticWorkloadConfig:
     min_service_ms: float = 5.0
     max_service_ms: float = 100.0
     pareto_shape: float = 1.5
-    sla_multiplier: float | None = 2.0
+    sla_ms: float | None = 200.0
 
     def __post_init__(self) -> None:
         """Validate counts, time bounds, and distribution parameters."""
@@ -91,8 +91,8 @@ class SyntheticWorkloadConfig:
         if self.max_service_ms <= self.min_service_ms:
             raise ValueError("max_service_ms must be greater than min_service_ms")
         _require_positive(self.pareto_shape, "pareto_shape")
-        if self.sla_multiplier is not None:
-            _require_positive(self.sla_multiplier, "sla_multiplier")
+        if self.sla_ms is not None:
+            _require_positive(self.sla_ms, "sla_ms")
         final_arrival_offset_ms = self.interarrival_ms * (self.burst_size - 1)
         if (
             self.arrival_pattern is ArrivalPattern.BURSTY
@@ -175,11 +175,6 @@ def generate_workload(config: SyntheticWorkloadConfig) -> tuple[TraceJob, ...]:
         service_ms = _service_ms(rng, config)
         duration_class = _duration_class(service_ms, config)
         request_id = f"synthetic-{index:06d}"
-        sla_ms = (
-            round(service_ms * config.sla_multiplier, 6)
-            if config.sla_multiplier is not None
-            else None
-        )
         jobs.append(
             TraceJob(
                 item=WorkItem(
@@ -187,7 +182,7 @@ def generate_workload(config: SyntheticWorkloadConfig) -> tuple[TraceJob, ...]:
                     arrival_ms=_arrival_ms(index, config),
                     payload=_PAYLOADS[duration_class],
                     input_units=_input_units(rng, service_ms),
-                    sla_ms=sla_ms,
+                    sla_ms=config.sla_ms,
                 ),
                 service_ms=service_ms,
                 duration_class=duration_class,

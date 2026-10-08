@@ -108,6 +108,18 @@ def test_input_regression_fits_training_coefficients() -> None:
     assert policy.slope_ms_per_unit == pytest.approx(3)
 
 
+def test_input_regression_refits_slope_when_intercept_is_constrained() -> None:
+    policy = InputRegressionPolicy.from_jobs(
+        [
+            TraceJob(make_item("a", input_units=1), service_ms=1),
+            TraceJob(make_item("b", input_units=2), service_ms=4),
+        ]
+    )
+
+    assert policy.intercept_ms == 0
+    assert policy.slope_ms_per_unit == pytest.approx(1.8)
+
+
 def test_fitted_baselines_require_training_jobs() -> None:
     with pytest.raises(ValueError, match="training job"):
         MeanWorkPolicy.from_jobs([])

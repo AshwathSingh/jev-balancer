@@ -60,7 +60,7 @@ def test_semantic_predictor_learns_text_probabilities_and_class_means() -> None:
         DurationClass.MEDIUM: 30,
         DurationClass.LONG: 90,
     }
-    assert prediction.predictor == "semantic-naive-bayes-1.00"
+    assert prediction.predictor == "semantic-naive-bayes-1.0"
     assert prediction.overhead_ms == 0.25
     assert prediction.expected_service_ms == pytest.approx(
         sum(
@@ -108,6 +108,35 @@ def test_semantic_predictor_requires_positive_alpha(alpha: float) -> None:
         SemanticNaiveBayesPredictor.fit(training_jobs(), alpha=alpha)
 
 
+def test_semantic_predictor_handles_large_finite_alpha() -> None:
+    predictor = SemanticNaiveBayesPredictor.fit(training_jobs(), alpha=1e308)
+
+    prediction = predictor.predict(
+        WorkItem("held-out", 10, "analyze production incident", 2)
+    )
+
+    assert sum(prediction.probabilities.values()) == pytest.approx(1)
+    assert prediction.expected_service_ms > 0
+
+
+def test_semantic_predictor_rejects_underflowing_alpha() -> None:
+    with pytest.raises(ValueError, match="alpha is too small"):
+        SemanticNaiveBayesPredictor.fit(training_jobs(), alpha=5e-324)
+
+
+def test_predictor_names_preserve_distinct_signal_weights() -> None:
+    first = SemanticNaiveBayesPredictor.fit(
+        training_jobs(),
+        semantic_weight=0.001,
+    )
+    second = SemanticNaiveBayesPredictor.fit(
+        training_jobs(),
+        semantic_weight=0.004,
+    )
+
+    assert first.name != second.name
+
+
 @pytest.mark.parametrize("semantic_weight", [-0.1, 1.1, inf, nan])
 def test_semantic_predictor_requires_bounded_weight(
     semantic_weight: float,
@@ -149,7 +178,7 @@ class PerfectPredictor:
                 for candidate in DurationClass
             },
             expected_service_ms=service_times[duration_class],
-            confidence=1.0,
+            confidence=0.0,
             predictor=self.name,
             overhead_ms=0.25,
         )
@@ -176,6 +205,12 @@ def test_evaluate_predictions_scores_probability_and_runtime_quality() -> None:
     metrics = evaluate_predictions(PerfectPredictor(), jobs)
 
     assert metrics.evaluated_jobs == 3
+    assert metrics.class_support == {
+        DurationClass.SHORT: 1,
+        DurationClass.MEDIUM: 1,
+        DurationClass.LONG: 1,
+    }
+    assert all(recall == 1 for recall in metrics.class_recall.values())
     assert metrics.class_accuracy == 1
     assert metrics.brier_score == 0
     assert metrics.expected_calibration_error == 0

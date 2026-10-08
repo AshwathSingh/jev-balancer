@@ -40,6 +40,24 @@ def _tokenize(payload: str) -> tuple[str, ...]:
     return tuple(_TOKEN_PATTERN.findall(payload.lower()))
 
 
+def _smoothed_probability(
+    count: int,
+    total: int,
+    category_count: int,
+    alpha: float,
+) -> float:
+    """Calculate additive smoothing without overflowing large ``alpha``."""
+
+    scale = max(float(total), alpha)
+    scaled_alpha = alpha / scale
+    probability = (count / scale + scaled_alpha) / (
+        total / scale + scaled_alpha * category_count
+    )
+    if probability == 0:
+        raise ValueError("alpha is too small for stable additive smoothing")
+    return probability
+
+
 @dataclass(frozen=True, slots=True)
 class SemanticNaiveBayesPredictor:
     """Multinomial Naive Bayes predictor fitted on labeled historical jobs.
@@ -50,6 +68,11 @@ class SemanticNaiveBayesPredictor:
     deterministic sweep from no semantic signal (zero) to full signal (one).
 
     Use :meth:`fit` rather than constructing this class directly.
+
+    Attributes:
+        alpha: Positive additive-smoothing strength.
+        semantic_weight: Blend from learned prior to text posterior.
+        overhead_ms: Simulated prediction latency charged to every request.
     """
 
     _class_priors: Mapping[DurationClass, float]
@@ -124,9 +147,13 @@ class SemanticNaiveBayesPredictor:
             vocabulary.update(tokens)
 
         class_count = len(DurationClass)
-        denominator = len(training_jobs) + alpha * class_count
         class_priors = {
-            duration_class: (class_counts[duration_class] + alpha) / denominator
+            duration_class: _smoothed_probability(
+                class_counts[duration_class],
+                len(training_jobs),
+                class_count,
+                alpha,
+            )
             for duration_class in DurationClass
         }
         global_mean_ms = fmean(job.service_ms for job in training_jobs)
@@ -142,6 +169,14 @@ class SemanticNaiveBayesPredictor:
             duration_class: MappingProxyType(dict(token_counts[duration_class]))
             for duration_class in DurationClass
         }
+        vocabulary_size = max(len(vocabulary), 1)
+        for duration_class in DurationClass:
+            _smoothed_probability(
+                0,
+                sum(token_counts[duration_class].values()),
+                vocabulary_size,
+                alpha,
+            )
 
         return cls(
             _class_priors=MappingProxyType(class_priors),
@@ -154,16 +189,16 @@ class SemanticNaiveBayesPredictor:
                 }
             ),
             _vocabulary=frozenset(vocabulary),
-            alpha=alpha,
-            semantic_weight=semantic_weight,
-            overhead_ms=overhead_ms,
+            alpha=float(alpha),
+            semantic_weight=float(semantic_weight),
+            overhead_ms=float(overhead_ms),
         )
 
     @property
     def name(self) -> str:
         """Return an identifier that records the configured signal strength."""
 
-        return f"semantic-naive-bayes-{self.semantic_weight:.2f}"
+        return f"semantic-naive-bayes-{self.semantic_weight!r}"
 
     @property
     def class_priors(self) -> Mapping[DurationClass, float]:
@@ -186,13 +221,17 @@ class SemanticNaiveBayesPredictor:
         vocabulary_size = max(len(self._vocabulary), 1)
         log_scores: dict[DurationClass, float] = {}
         for duration_class in DurationClass:
-            token_denominator = (
-                self._class_token_totals[duration_class] + self.alpha * vocabulary_size
-            )
             score = log(self._class_priors[duration_class])
             counts = self._token_counts[duration_class]
             for token in tokens:
-                score += log((counts.get(token, 0) + self.alpha) / token_denominator)
+                score += log(
+                    _smoothed_probability(
+                        counts.get(token, 0),
+                        self._class_token_totals[duration_class],
+                        vocabulary_size,
+                        self.alpha,
+                    )
+                )
             log_scores[duration_class] = score
 
         maximum_score = max(log_scores.values())

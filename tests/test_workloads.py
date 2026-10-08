@@ -97,14 +97,20 @@ def test_generated_service_times_and_labels_are_bounded(
     assert all(10 <= job.service_ms <= 50 for job in jobs)
     assert all(job.duration_class is not None for job in jobs)
     assert all(job.item.input_units >= 1 for job in jobs)
-    for job in jobs:
-        assert job.item.sla_ms == pytest.approx(job.service_ms * 2)
+    assert all(job.item.sla_ms == 200 for job in jobs)
+    assert len({job.service_ms for job in jobs}) > 1
 
 
 def test_generate_workload_can_omit_slas() -> None:
-    jobs = generate_workload(SyntheticWorkloadConfig(job_count=2, sla_multiplier=None))
+    jobs = generate_workload(SyntheticWorkloadConfig(job_count=2, sla_ms=None))
 
     assert all(job.item.sla_ms is None for job in jobs)
+
+
+@pytest.mark.parametrize("sla_ms", [0.0, -1.0, inf, nan])
+def test_config_requires_positive_optional_sla(sla_ms: float) -> None:
+    with pytest.raises(ValueError, match="sla_ms"):
+        SyntheticWorkloadConfig(job_count=2, sla_ms=sla_ms)
 
 
 @pytest.mark.parametrize("job_count", [-1, 1.5, True])
@@ -183,6 +189,45 @@ def test_chronological_split_orders_then_partitions() -> None:
     assert [job.item.request_id for job in split.training] == ["a", "b"]
     assert [job.item.request_id for job in split.evaluation] == ["c", "d"]
     assert split.training[-1].item.arrival_ms <= split.evaluation[0].item.arrival_ms
+
+
+def test_chronological_split_can_require_observed_training_labels() -> None:
+    jobs = [
+        TraceJob(make_job("a", 0).item, service_ms=10),
+        TraceJob(make_job("b", 1).item, service_ms=2),
+        TraceJob(make_job("c", 20).item, service_ms=5),
+        TraceJob(make_job("d", 21).item, service_ms=5),
+    ]
+
+    split = chronological_split(
+        jobs,
+        training_fraction=0.5,
+        require_observed_labels=True,
+    )
+
+    assert [job.item.request_id for job in split.training] == ["a", "b"]
+    assert [job.item.request_id for job in split.evaluation] == ["c", "d"]
+    evaluation_start_ms = split.evaluation[0].item.arrival_ms
+    assert all(
+        job.item.arrival_ms + job.service_ms <= evaluation_start_ms
+        for job in split.training
+    )
+
+
+def test_chronological_split_rejects_unavailable_training_labels() -> None:
+    with pytest.raises(ValueError, match="training labels"):
+        chronological_split(
+            [make_job("a", 0), make_job("b", 1), make_job("c", 2)],
+            require_observed_labels=True,
+        )
+
+
+def test_chronological_split_requires_boolean_label_option() -> None:
+    with pytest.raises(ValueError, match="boolean"):
+        chronological_split(
+            [make_job("a", 0), make_job("b", 20)],
+            require_observed_labels=1,  # type: ignore[arg-type]
+        )
 
 
 @pytest.mark.parametrize("training_fraction", [0.0, 1.0, -0.1, 1.1, inf, nan])

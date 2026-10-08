@@ -28,19 +28,24 @@ def main() -> None:
 
     jobs = generate_workload(
         SyntheticWorkloadConfig(
-            job_count=150,
+            job_count=300,
             seed=11,
             arrival_pattern=ArrivalPattern.BURSTY,
             service_distribution=ServiceDistribution.HEAVY_TAILED,
             interarrival_ms=2,
             burst_size=10,
-            burst_gap_ms=50,
+            burst_gap_ms=200,
             min_service_ms=5,
             max_service_ms=120,
-            sla_multiplier=6,
+            pareto_shape=0.4,
+            sla_ms=100,
         )
     )
-    split = chronological_split(jobs, training_fraction=0.7)
+    split = chronological_split(
+        jobs,
+        training_fraction=0.7,
+        require_observed_labels=True,
+    )
     mean_policy = MeanWorkPolicy.from_jobs(split.training)
     regression_policy = InputRegressionPolicy.from_jobs(split.training)
     predictors = tuple(
@@ -54,7 +59,7 @@ def main() -> None:
     semantic_policies = tuple(
         SemanticWorkPolicy(
             predictor,
-            name=f"semantic-work-{predictor.semantic_weight:.2f}",
+            name=f"semantic-work-{predictor.semantic_weight!r}",
         )
         for predictor in predictors
     )
