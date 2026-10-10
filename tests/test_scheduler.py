@@ -20,6 +20,11 @@ def make_prediction(
             DurationClass.MEDIUM: 0.2,
             DurationClass.LONG: 0.1,
         },
+        class_service_ms={
+            DurationClass.SHORT: 50,
+            DurationClass.MEDIUM: 200,
+            DurationClass.LONG: 250,
+        },
         expected_service_ms=expected_service_ms,
         confidence=0.8,
         predictor="test",

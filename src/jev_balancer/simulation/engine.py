@@ -255,6 +255,10 @@ def simulate(
             decided_at_ms=decided_at_ms,
             estimated_service_ms=choice.estimated_service_ms,
             estimated_backlog_ms=selected_snapshot.estimated_backlog_ms,
+            estimate_method=choice.estimate_method,
+            risk_quantile=choice.risk_quantile,
+            blend_weight=choice.blend_weight,
+            fallback_service_ms=choice.fallback_service_ms,
             prediction=choice.prediction,
         )
 

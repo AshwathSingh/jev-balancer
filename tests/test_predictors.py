@@ -177,6 +177,7 @@ class PerfectPredictor:
                 candidate: float(candidate is duration_class)
                 for candidate in DurationClass
             },
+            class_service_ms=service_times,
             expected_service_ms=service_times[duration_class],
             confidence=0.0,
             predictor=self.name,

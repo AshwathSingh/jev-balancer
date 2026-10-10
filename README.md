@@ -16,6 +16,8 @@ The [workload guide](docs/workloads.md) covers deterministic generation, JSONL
 replay, and chronological train/evaluation splits.
 The [semantic predictor guide](docs/semantic-predictor.md) explains training,
 probability quality, overhead, and the semantic scheduling policy.
+The [uncertainty-aware scheduling guide](docs/uncertainty-aware-scheduling.md)
+documents quantile, CVaR, entropy fallback, and the multi-seed experiment.
 
 Run the current baseline experiment with:
 
@@ -27,6 +29,12 @@ Run the semantic signal-strength comparison with:
 
 ```bash
 uv run python examples/benchmark_semantic.py
+```
+
+Run the uncertainty-aware experiment matrix with:
+
+```bash
+uv run python examples/benchmark_uncertainty.py > uncertainty-results.json
 ```
 
 ## Development

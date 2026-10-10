@@ -262,6 +262,7 @@ class SemanticNaiveBayesPredictor:
         )
         return DurationPrediction(
             probabilities=probabilities,
+            class_service_ms=self._class_service_means_ms,
             expected_service_ms=expected_service_ms,
             confidence=max(probabilities.values()),
             predictor=self.name,

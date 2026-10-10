@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from math import isclose, isfinite
 from typing import Protocol
 
-from jev_balancer.models import DurationPrediction, WorkerSnapshot, WorkItem
+from jev_balancer.models import (
+    DurationPrediction,
+    ServiceEstimateMethod,
+    WorkerSnapshot,
+    WorkItem,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,12 +27,20 @@ class SchedulingChoice:
         worker_id: Identifier of the worker selected from the supplied snapshot.
         estimated_service_ms: Positive estimated runtime for the new job.
         decision_latency_ms: Non-negative time spent making this choice.
+        estimate_method: Transformation used for the service estimate.
+        risk_quantile: Optional quantile or tail boundary.
+        blend_weight: Optional tail or fallback blend share.
+        fallback_service_ms: Optional non-semantic fallback estimate.
         prediction: Optional semantic prediction supporting the estimate.
     """
 
     worker_id: str
     estimated_service_ms: float
     decision_latency_ms: float = 0.0
+    estimate_method: ServiceEstimateMethod = ServiceEstimateMethod.EXPECTED
+    risk_quantile: float | None = None
+    blend_weight: float | None = None
+    fallback_service_ms: float | None = None
     prediction: DurationPrediction | None = None
 
     def __post_init__(self) -> None:
@@ -40,15 +53,34 @@ class SchedulingChoice:
         if not isfinite(self.decision_latency_ms) or self.decision_latency_ms < 0:
             raise ValueError("decision_latency_ms must be finite and non-negative")
 
+        if not isinstance(self.estimate_method, ServiceEstimateMethod):
+            raise ValueError("estimate_method must be a ServiceEstimateMethod")
         if self.prediction is None:
+            if self.estimate_method is not ServiceEstimateMethod.EXPECTED:
+                raise ValueError("risk-aware estimates require a prediction")
+            if any(
+                value is not None
+                for value in (
+                    self.risk_quantile,
+                    self.blend_weight,
+                    self.fallback_service_ms,
+                )
+            ):
+                raise ValueError("risk parameters require a prediction")
             return
+        calculated_estimate_ms = self.prediction.service_estimate_ms(
+            self.estimate_method,
+            risk_quantile=self.risk_quantile,
+            blend_weight=self.blend_weight,
+            fallback_service_ms=self.fallback_service_ms,
+        )
         if not isclose(
             self.estimated_service_ms,
-            self.prediction.expected_service_ms,
+            calculated_estimate_ms,
             rel_tol=1e-9,
             abs_tol=1e-9,
         ):
-            raise ValueError("estimated_service_ms must match the prediction")
+            raise ValueError("estimated_service_ms must match estimate_method")
         if self.decision_latency_ms < self.prediction.overhead_ms:
             raise ValueError("decision_latency_ms must include prediction overhead")
 

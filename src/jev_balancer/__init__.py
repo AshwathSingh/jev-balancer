@@ -5,6 +5,14 @@ from jev_balancer.benchmark import (
     PolicyBenchmark,
     benchmark_policies,
 )
+from jev_balancer.experiments import (
+    AggregatePolicyMetrics,
+    ExperimentRegime,
+    ExperimentRun,
+    RegimeExperimentResult,
+    UncertaintyExperimentReport,
+    run_uncertainty_experiment,
+)
 from jev_balancer.metrics import (
     BenchmarkMetrics,
     LatencySummary,
@@ -15,17 +23,21 @@ from jev_balancer.models import (
     DurationClass,
     DurationPrediction,
     RoutingDecision,
+    ServiceEstimateMethod,
     TraceJob,
     WorkerSnapshot,
     WorkItem,
 )
 from jev_balancer.policies import (
+    EntropyFallbackPolicy,
     InputRegressionPolicy,
     LeastJobsPolicy,
     MeanWorkPolicy,
     OracleWorkPolicy,
     RoundRobinPolicy,
     SemanticWorkPolicy,
+    ServiceEstimator,
+    UncertaintyAwarePolicy,
 )
 from jev_balancer.predictors import (
     DurationPredictor,
@@ -49,12 +61,16 @@ from jev_balancer.workloads import (
 )
 
 __all__ = [
+    "AggregatePolicyMetrics",
     "ArrivalPattern",
     "BenchmarkMetrics",
     "BenchmarkReport",
     "DurationClass",
     "DurationPrediction",
     "DurationPredictor",
+    "EntropyFallbackPolicy",
+    "ExperimentRegime",
+    "ExperimentRun",
     "InputRegressionPolicy",
     "JobExecution",
     "LatencySummary",
@@ -63,6 +79,7 @@ __all__ = [
     "OracleWorkPolicy",
     "PolicyBenchmark",
     "PredictionMetrics",
+    "RegimeExperimentResult",
     "RoundRobinPolicy",
     "RoutingDecision",
     "SchedulingChoice",
@@ -70,9 +87,13 @@ __all__ = [
     "SemanticNaiveBayesPredictor",
     "SemanticWorkPolicy",
     "ServiceDistribution",
+    "ServiceEstimateMethod",
+    "ServiceEstimator",
     "SimulationResult",
     "SyntheticWorkloadConfig",
     "TraceJob",
+    "UncertaintyAwarePolicy",
+    "UncertaintyExperimentReport",
     "WorkItem",
     "WorkerSnapshot",
     "WorkerUtilization",
@@ -84,6 +105,7 @@ __all__ = [
     "evaluate_predictions",
     "generate_workload",
     "read_jsonl",
+    "run_uncertainty_experiment",
     "serialize_jsonl",
     "simulate",
     "write_jsonl",

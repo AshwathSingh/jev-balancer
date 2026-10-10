@@ -52,8 +52,9 @@ The semantic policy chooses the worker with the least estimated backlog. Its
 prediction and probability distribution are retained in every routing decision
 for later inspection.
 
-The current policy routes using the distribution's expected service time. It
-does not yet use variance, entropy, or a tail quantile, so this stage tests a
-semantic point estimate carried by a probabilistic interface. An
-uncertainty-aware policy is required before claiming that uncertainty itself
-improves scheduling.
+`SemanticWorkPolicy` routes using the distribution's expected service time and
+remains the semantic point-estimate control. The uncertainty-aware policies use
+the same prediction through quantile, CVaR, expected/CVaR blend, and
+entropy-weighted fallback transformations. This isolates the scheduling effect
+of uncertainty from changes to the predictor itself. See the
+[uncertainty-aware scheduling guide](uncertainty-aware-scheduling.md).

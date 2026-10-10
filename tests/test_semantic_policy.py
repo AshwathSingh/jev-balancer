@@ -30,6 +30,11 @@ class FixedPredictor:
                 DurationClass.MEDIUM: 0.3,
                 DurationClass.LONG: 0.2,
             },
+            class_service_ms={
+                DurationClass.SHORT: 4,
+                DurationClass.MEDIUM: 10,
+                DurationClass.LONG: 35,
+            },
             expected_service_ms=12,
             confidence=0.5,
             predictor=self.name,
