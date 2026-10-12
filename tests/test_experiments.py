@@ -7,6 +7,7 @@ import pytest
 from jev_balancer import (
     ArrivalPattern,
     ExperimentRegime,
+    PayloadStyle,
     ServiceDistribution,
     run_uncertainty_experiment,
 )
@@ -45,6 +46,8 @@ def test_uncertainty_experiment_is_deterministic_and_json_ready() -> None:
     assert all(run.evaluation_job_count == 20 for run in result.runs)
     assert len(result.policy_aggregates) == 10
     assert all(aggregate.runs == 2 for aggregate in result.policy_aggregates)
+    assert result.prediction_aggregate.runs == 2
+    assert result.prediction_aggregate.predictor_name == "semantic-naive-bayes-1.0"
     assert {
         "input-regression",
         "semantic-expected",
@@ -66,6 +69,8 @@ def test_uncertainty_experiment_is_deterministic_and_json_ready() -> None:
         ({"worker_count": 0}, "worker_count"),
         ({"predictor_overhead_ms": -1}, "predictor_overhead_ms"),
         ({"semantic_weight": 2}, "semantic_weight"),
+        ({"evaluation_semantic_ambiguity": 2}, "semantic_ambiguity"),
+        ({"training_semantic_noise": -1}, "semantic_noise"),
     ],
 )
 def test_experiment_regime_rejects_invalid_settings(
@@ -89,3 +94,30 @@ def test_uncertainty_experiment_rejects_invalid_matrix() -> None:
         run_uncertainty_experiment([regime], [True])
     with pytest.raises(ValueError, match="unique"):
         run_uncertainty_experiment([regime], [1, 1])
+
+
+def test_distribution_shift_degrades_held_out_semantic_predictions() -> None:
+    clear = make_regime(
+        name="clear",
+        service_distribution=ServiceDistribution.UNIFORM,
+        training_jobs=120,
+        evaluation_jobs=120,
+    )
+    shifted = make_regime(
+        name="shifted",
+        service_distribution=ServiceDistribution.UNIFORM,
+        training_jobs=120,
+        evaluation_jobs=120,
+        evaluation_payload_style=PayloadStyle.SHIFTED,
+        evaluation_semantic_ambiguity=0.35,
+        evaluation_semantic_noise=0.2,
+    )
+
+    report = run_uncertainty_experiment([clear, shifted], [17])
+    clear_quality = report.regimes[0].prediction_aggregate
+    shifted_quality = report.regimes[1].prediction_aggregate
+
+    assert clear_quality.class_accuracy == 1
+    assert shifted_quality.class_accuracy < clear_quality.class_accuracy
+    assert shifted_quality.brier_score > clear_quality.brier_score
+    assert shifted_quality.expected_calibration_error > 0

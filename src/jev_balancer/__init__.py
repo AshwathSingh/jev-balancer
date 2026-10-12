@@ -7,6 +7,7 @@ from jev_balancer.benchmark import (
 )
 from jev_balancer.experiments import (
     AggregatePolicyMetrics,
+    AggregatePredictionMetrics,
     ExperimentRegime,
     ExperimentRun,
     RegimeExperimentResult,
@@ -63,6 +64,7 @@ from jev_balancer.workloads import (
 
 __all__ = [
     "AggregatePolicyMetrics",
+    "AggregatePredictionMetrics",
     "ArrivalPattern",
     "BenchmarkMetrics",
     "BenchmarkReport",

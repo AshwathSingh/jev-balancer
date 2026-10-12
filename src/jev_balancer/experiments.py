@@ -28,6 +28,7 @@ from jev_balancer.predictors import (
 from jev_balancer.scheduler import SchedulingPolicy
 from jev_balancer.workloads import (
     ArrivalPattern,
+    PayloadStyle,
     ServiceDistribution,
     SyntheticWorkloadConfig,
     chronological_split,
@@ -55,6 +56,12 @@ class ExperimentRegime:
         pareto_shape: Heavy-tail shape parameter.
         sla_ms: Optional response-time objective.
         semantic_weight: Strength of the synthetic text signal.
+        training_payload_style: Vocabulary used during predictor fitting.
+        evaluation_payload_style: Vocabulary used during holdout evaluation.
+        training_semantic_ambiguity: Ambiguous-payload rate in training.
+        evaluation_semantic_ambiguity: Ambiguous-payload rate in evaluation.
+        training_semantic_noise: Wrong-class cue rate in training.
+        evaluation_semantic_noise: Wrong-class cue rate in evaluation.
     """
 
     name: str
@@ -72,6 +79,12 @@ class ExperimentRegime:
     pareto_shape: float = 0.6
     sla_ms: float | None = 150.0
     semantic_weight: float = 1.0
+    training_payload_style: PayloadStyle = PayloadStyle.STANDARD
+    evaluation_payload_style: PayloadStyle = PayloadStyle.STANDARD
+    training_semantic_ambiguity: float = 0.0
+    evaluation_semantic_ambiguity: float = 0.0
+    training_semantic_noise: float = 0.0
+    evaluation_semantic_noise: float = 0.0
 
     def __post_init__(self) -> None:
         """Validate regime identity, counts, and workload parameters."""
@@ -89,6 +102,11 @@ class ExperimentRegime:
         if not isfinite(self.semantic_weight) or not 0 <= self.semantic_weight <= 1:
             raise ValueError("semantic_weight must be from 0 to 1")
         self.workload_config(job_count=self.training_jobs, seed=0)
+        self.workload_config(
+            job_count=self.evaluation_jobs,
+            seed=0,
+            for_evaluation=True,
+        )
 
     def workload_config(
         self,
@@ -96,8 +114,27 @@ class ExperimentRegime:
         job_count: int,
         seed: int,
         start_ms: float = 0.0,
+        for_evaluation: bool = False,
     ) -> SyntheticWorkloadConfig:
-        """Build a validated generator configuration for this regime."""
+        """Build a validated training or evaluation generator configuration.
+
+        Args:
+            job_count: Number of jobs in the generated phase.
+            seed: Deterministic phase seed.
+            start_ms: Arrival time of the first generated job.
+            for_evaluation: Use holdout semantic-signal settings when true.
+        """
+
+        if type(for_evaluation) is not bool:
+            raise ValueError("for_evaluation must be a boolean")
+        if for_evaluation:
+            payload_style = self.evaluation_payload_style
+            semantic_ambiguity = self.evaluation_semantic_ambiguity
+            semantic_noise = self.evaluation_semantic_noise
+        else:
+            payload_style = self.training_payload_style
+            semantic_ambiguity = self.training_semantic_ambiguity
+            semantic_noise = self.training_semantic_noise
 
         return SyntheticWorkloadConfig(
             job_count=job_count,
@@ -112,6 +149,9 @@ class ExperimentRegime:
             max_service_ms=self.max_service_ms,
             pareto_shape=self.pareto_shape,
             sla_ms=self.sla_ms,
+            payload_style=payload_style,
+            semantic_ambiguity=semantic_ambiguity,
+            semantic_noise=semantic_noise,
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -133,6 +173,18 @@ class ExperimentRegime:
             "pareto_shape": self.pareto_shape,
             "sla_ms": self.sla_ms,
             "semantic_weight": self.semantic_weight,
+            "semantic_signal": {
+                "training": {
+                    "payload_style": self.training_payload_style.value,
+                    "ambiguity": self.training_semantic_ambiguity,
+                    "noise": self.training_semantic_noise,
+                },
+                "evaluation": {
+                    "payload_style": self.evaluation_payload_style.value,
+                    "ambiguity": self.evaluation_semantic_ambiguity,
+                    "noise": self.evaluation_semantic_noise,
+                },
+            },
         }
 
 
@@ -217,11 +269,65 @@ class AggregatePolicyMetrics:
 
 
 @dataclass(frozen=True, slots=True)
+class AggregatePredictionMetrics:
+    """Mean predictor quality across independent deterministic seeds."""
+
+    predictor_name: str
+    runs: int
+    class_accuracy: float
+    brier_score: float
+    expected_calibration_error: float
+    mean_absolute_error_ms: float
+    mean_overhead_ms: float
+
+    @classmethod
+    def from_metrics(
+        cls,
+        metrics: Iterable[PredictionMetrics],
+    ) -> AggregatePredictionMetrics:
+        """Average a non-empty sequence of compatible prediction metrics."""
+
+        values = tuple(metrics)
+        if not values:
+            raise ValueError("at least one prediction metric set is required")
+        predictor_name = values[0].predictor_name
+        if any(value.predictor_name != predictor_name for value in values):
+            raise ValueError("all metric sets must belong to one predictor")
+        return cls(
+            predictor_name=predictor_name,
+            runs=len(values),
+            class_accuracy=fmean(value.class_accuracy for value in values),
+            brier_score=fmean(value.brier_score for value in values),
+            expected_calibration_error=fmean(
+                value.expected_calibration_error for value in values
+            ),
+            mean_absolute_error_ms=fmean(
+                value.mean_absolute_error_ms for value in values
+            ),
+            mean_overhead_ms=fmean(value.mean_overhead_ms for value in values),
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a JSON-ready predictor aggregate."""
+
+        return {
+            "predictor": self.predictor_name,
+            "runs": self.runs,
+            "class_accuracy": self.class_accuracy,
+            "brier_score": self.brier_score,
+            "expected_calibration_error": self.expected_calibration_error,
+            "mean_absolute_error_ms": self.mean_absolute_error_ms,
+            "mean_overhead_ms": self.mean_overhead_ms,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class RegimeExperimentResult:
     """All seeded runs and aggregates for one experimental regime."""
 
     regime: ExperimentRegime
     runs: tuple[ExperimentRun, ...]
+    prediction_aggregate: AggregatePredictionMetrics
     policy_aggregates: tuple[AggregatePolicyMetrics, ...]
 
     def to_dict(self) -> dict[str, object]:
@@ -230,6 +336,7 @@ class RegimeExperimentResult:
         return {
             "regime": self.regime.to_dict(),
             "runs": [run.to_dict() for run in self.runs],
+            "prediction_aggregate": self.prediction_aggregate.to_dict(),
             "policy_aggregates": {
                 aggregate.policy_name: aggregate.to_dict()
                 for aggregate in self.policy_aggregates
@@ -302,6 +409,7 @@ def _generate_split(
                 job_count=regime.evaluation_jobs,
                 seed=seed + 1_000_003,
                 start_ms=evaluation_start_ms,
+                for_evaluation=True,
             )
         ),
         "evaluation",
@@ -446,6 +554,9 @@ def run_uncertainty_experiment(
             RegimeExperimentResult(
                 regime=regime,
                 runs=stable_runs,
+                prediction_aggregate=AggregatePredictionMetrics.from_metrics(
+                    run.prediction_metrics for run in stable_runs
+                ),
                 policy_aggregates=_aggregate_runs(stable_runs),
             )
         )

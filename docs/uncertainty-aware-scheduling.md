@@ -10,10 +10,20 @@ Run the complete experiment matrix with:
 uv run python examples/benchmark_uncertainty.py > uncertainty-results.json
 ```
 
-The example varies arrival pattern, service-time distribution, offered load,
-and prediction overhead across five fixed seeds. Each seed has a historical
-training phase followed by a label-safe holdout phase. All policies replay the
-same holdout requests and use the same workers within that run.
+The example runs 64 regimes across five fixed seeds. It varies arrival pattern,
+service-time distribution, offered load, prediction overhead, and four semantic
+signal profiles:
+
+- `clear`: duration-specific wording in training and evaluation.
+- `ambiguous`: half of payloads use class-independent wording.
+- `noisy`: 15% ambiguous payloads plus a 30% wrong-class cue rate.
+- `shifted`: evaluation uses unseen vocabulary plus higher ambiguity and noise
+  than training.
+
+Each seed has a historical training phase followed by a label-safe holdout
+phase. Semantic controls change only visible payload text; true service times,
+input sizes, and arrivals remain identical. All policies replay the same
+holdout requests and use the same workers within that run.
 
 ## Work estimates
 
@@ -46,7 +56,10 @@ time.
 
 ## Reading the report
 
-Each regime contains raw per-seed results and `policy_aggregates`. Compare:
+Each regime contains raw per-seed results, `prediction_aggregate`, and
+`policy_aggregates`. Check prediction accuracy, Brier score, expected
+calibration error, and duration error before comparing scheduling metrics.
+Then compare:
 
 - `semantic-expected` to the risk-aware policies to isolate the value of the
   uncertainty transformation.
@@ -62,6 +75,8 @@ policy in at least two high-variance, moderate-or-higher-load regimes, with no
 more than a 2% throughput loss.
 
 The aggregates are arithmetic means across deterministic seeds, not confidence
-intervals or proof of statistical significance. Report neutral and negative
-regimes alongside improvements. Before any production claim, replace synthetic
-templates with held-out labeled traces and a real semantic predictor adapter.
+intervals or proof of statistical significance. The signal profiles are
+controlled stress tests, not a model of production error rates. Report neutral
+and negative regimes alongside improvements. Before any production claim,
+replace synthetic templates with held-out labeled traces and a real semantic
+predictor adapter.

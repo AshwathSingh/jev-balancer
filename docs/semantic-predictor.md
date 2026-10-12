@@ -36,9 +36,10 @@ class prior:
 
 This is a controlled signal-strength sweep. It changes the probability
 distribution but does not guarantee a particular classification accuracy.
-The synthetic generator currently uses one payload template per true duration
-class, so it tests plumbing and overhead more than realistic language
-generalization.
+The synthetic generator can independently add ambiguous payloads, wrong-class
+cues, and shifted evaluation vocabulary. Clear templates still test plumbing;
+the harder profiles test imperfect accuracy and calibration without changing
+hidden workload truth.
 
 ## Evaluation
 
