@@ -18,6 +18,9 @@ The [semantic predictor guide](docs/semantic-predictor.md) explains training,
 probability quality, overhead, and the semantic scheduling policy.
 The [uncertainty-aware scheduling guide](docs/uncertainty-aware-scheduling.md)
 documents quantile, CVaR, entropy fallback, and the multi-seed experiment.
+The [real-prompt evaluation guide](docs/real-trace-evaluation.md) documents how
+to measure human-written prompts with a local Ollama model and replay them
+without leaking evaluation runtimes into training.
 
 Run the current baseline experiment with:
 
@@ -35,6 +38,16 @@ Run the uncertainty-aware experiment matrix with:
 
 ```bash
 uv run python examples/benchmark_uncertainty.py > uncertainty-results.json
+```
+
+Run the real-prompt, locally measured pilot with Ollama running:
+
+```bash
+uv run python examples/benchmark_real_prompts.py \
+  --model llama2 \
+  --prompts 80 \
+  --num-predict 64 \
+  --output real-prompt-results.json
 ```
 
 ## Development
