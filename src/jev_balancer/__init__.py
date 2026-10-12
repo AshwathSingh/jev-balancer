@@ -49,6 +49,7 @@ from jev_balancer.scheduler import SchedulingChoice, SchedulingPolicy
 from jev_balancer.simulation import JobExecution, SimulationResult, simulate
 from jev_balancer.workloads import (
     ArrivalPattern,
+    PayloadStyle,
     ServiceDistribution,
     SyntheticWorkloadConfig,
     WorkloadSplit,
@@ -77,6 +78,7 @@ __all__ = [
     "LeastJobsPolicy",
     "MeanWorkPolicy",
     "OracleWorkPolicy",
+    "PayloadStyle",
     "PolicyBenchmark",
     "PredictionMetrics",
     "RegimeExperimentResult",

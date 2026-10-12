@@ -19,7 +19,8 @@ The same options and seed produce an equal in-memory trace. Generated jobs
 contain:
 
 - A stable request identifier and arrival time.
-- A duration-class-specific payload for future semantic prediction.
+- A controlled payload that may contain clear, ambiguous, or misleading
+  duration cues.
 - Noisy `input_units` for the non-semantic regression baseline.
 - Hidden actual `service_ms` and an optional fixed SLA target.
 - A ground-truth `short`, `medium`, or `long` duration class.
@@ -39,6 +40,22 @@ Synthetic duration labels use thirds of the configured service-time range.
 They are generator truth, not boundaries learned by the predictor. The fixed
 `sla_ms` is deliberately independent of each job's actual runtime so it cannot
 reveal hidden `service_ms` to a policy.
+
+## Semantic signal controls
+
+Payload controls change only scheduler-visible text. They do not change
+arrival times, `input_units`, duration classes, or hidden service times:
+
+- `semantic_ambiguity` is the probability of replacing a class cue with
+  class-independent wording.
+- `semantic_noise` is the probability that a non-ambiguous payload contains a
+  cue associated with the wrong duration class.
+- `payload_style="shifted"` uses a separate vocabulary to simulate evaluation
+  traffic whose wording differs from training.
+
+All three controls are seeded and deterministic. Use separate training and
+evaluation settings to model distribution shift without leaking evaluation
+labels into predictor fitting.
 
 ## JSONL and splitting
 

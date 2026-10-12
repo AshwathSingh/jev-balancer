@@ -10,6 +10,7 @@ import pytest
 from jev_balancer import (
     ArrivalPattern,
     DurationClass,
+    PayloadStyle,
     ServiceDistribution,
     SyntheticWorkloadConfig,
     TraceJob,
@@ -48,6 +49,72 @@ def test_generate_workload_is_seed_deterministic() -> None:
 
     assert first == second
     assert first != different_seed
+
+
+def test_semantic_controls_do_not_change_hidden_workload_truth() -> None:
+    base = SyntheticWorkloadConfig(job_count=40, seed=7)
+
+    clear = generate_workload(base)
+    difficult = generate_workload(
+        replace(
+            base,
+            payload_style=PayloadStyle.SHIFTED,
+            semantic_ambiguity=0.5,
+            semantic_noise=0.5,
+        )
+    )
+
+    assert [job.service_ms for job in clear] == [job.service_ms for job in difficult]
+    assert [job.item.input_units for job in clear] == [
+        job.item.input_units for job in difficult
+    ]
+    assert [job.duration_class for job in clear] == [
+        job.duration_class for job in difficult
+    ]
+    assert [job.item.payload for job in clear] != [
+        job.item.payload for job in difficult
+    ]
+
+
+def test_fully_ambiguous_payloads_are_not_duration_class_specific() -> None:
+    jobs = generate_workload(
+        SyntheticWorkloadConfig(
+            job_count=100,
+            seed=11,
+            semantic_ambiguity=1,
+        )
+    )
+
+    payload_classes: dict[str, set[DurationClass | None]] = {}
+    for job in jobs:
+        payload_classes.setdefault(job.item.payload, set()).add(job.duration_class)
+
+    assert len(payload_classes) == 3
+    assert all(len(classes) > 1 for classes in payload_classes.values())
+
+
+def test_fully_noisy_payloads_never_use_the_true_class_cue() -> None:
+    base = SyntheticWorkloadConfig(job_count=50, seed=5)
+
+    clear = generate_workload(base)
+    noisy = generate_workload(replace(base, semantic_noise=1))
+
+    assert all(
+        clear_job.item.payload != noisy_job.item.payload
+        for clear_job, noisy_job in zip(clear, noisy, strict=True)
+    )
+
+
+def test_shifted_payload_style_changes_only_visible_vocabulary() -> None:
+    base = SyntheticWorkloadConfig(job_count=20, seed=13)
+
+    standard = generate_workload(base)
+    shifted = generate_workload(replace(base, payload_style=PayloadStyle.SHIFTED))
+
+    assert all(
+        standard_job.item.payload != shifted_job.item.payload
+        for standard_job, shifted_job in zip(standard, shifted, strict=True)
+    )
 
 
 def test_generate_steady_arrivals() -> None:
@@ -111,6 +178,27 @@ def test_generate_workload_can_omit_slas() -> None:
 def test_config_requires_positive_optional_sla(sla_ms: float) -> None:
     with pytest.raises(ValueError, match="sla_ms"):
         SyntheticWorkloadConfig(job_count=2, sla_ms=sla_ms)
+
+
+@pytest.mark.parametrize("field_name", ["semantic_ambiguity", "semantic_noise"])
+@pytest.mark.parametrize("value", [-0.1, 1.1, inf, nan])
+def test_config_requires_valid_semantic_probability(
+    field_name: str,
+    value: float,
+) -> None:
+    with pytest.raises(ValueError, match=field_name):
+        if field_name == "semantic_ambiguity":
+            SyntheticWorkloadConfig(job_count=2, semantic_ambiguity=value)
+        else:
+            SyntheticWorkloadConfig(job_count=2, semantic_noise=value)
+
+
+def test_config_requires_payload_style_enum() -> None:
+    with pytest.raises(ValueError, match="payload_style"):
+        SyntheticWorkloadConfig(
+            job_count=2,
+            payload_style="standard",  # type: ignore[arg-type]
+        )
 
 
 @pytest.mark.parametrize("job_count", [-1, 1.5, True])

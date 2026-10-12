@@ -9,6 +9,7 @@ from jev_balancer.workloads.jsonl import (
 from jev_balancer.workloads.split import WorkloadSplit, chronological_split
 from jev_balancer.workloads.synthetic import (
     ArrivalPattern,
+    PayloadStyle,
     ServiceDistribution,
     SyntheticWorkloadConfig,
     generate_workload,
@@ -16,6 +17,7 @@ from jev_balancer.workloads.synthetic import (
 
 __all__ = [
     "ArrivalPattern",
+    "PayloadStyle",
     "ServiceDistribution",
     "SyntheticWorkloadConfig",
     "WorkloadSplit",

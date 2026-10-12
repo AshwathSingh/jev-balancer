@@ -24,6 +24,13 @@ class ServiceDistribution(str, Enum):
     HEAVY_TAILED = "heavy-tailed"
 
 
+class PayloadStyle(str, Enum):
+    """Vocabulary used to express synthetic semantic duration cues."""
+
+    STANDARD = "standard"
+    SHIFTED = "shifted"
+
+
 def _require_nonnegative(value: float, field_name: str) -> None:
     """Require a finite value greater than or equal to zero."""
 
@@ -55,6 +62,11 @@ class SyntheticWorkloadConfig:
         max_service_ms: Largest generated service time.
         pareto_shape: Shape parameter used by the heavy-tailed distribution.
         sla_ms: Optional fixed response-time objective applied to every job.
+        payload_style: Standard vocabulary or a shifted holdout vocabulary.
+        semantic_ambiguity: Probability of replacing the class cue with a
+            class-independent payload.
+        semantic_noise: Probability that a non-ambiguous payload uses a cue
+            from the wrong duration class.
     """
 
     job_count: int
@@ -69,6 +81,9 @@ class SyntheticWorkloadConfig:
     max_service_ms: float = 100.0
     pareto_shape: float = 1.5
     sla_ms: float | None = 200.0
+    payload_style: PayloadStyle = PayloadStyle.STANDARD
+    semantic_ambiguity: float = 0.0
+    semantic_noise: float = 0.0
 
     def __post_init__(self) -> None:
         """Validate counts, time bounds, and distribution parameters."""
@@ -83,6 +98,8 @@ class SyntheticWorkloadConfig:
             raise ValueError("arrival_pattern must be an ArrivalPattern")
         if not isinstance(self.service_distribution, ServiceDistribution):
             raise ValueError("service_distribution must be a ServiceDistribution")
+        if not isinstance(self.payload_style, PayloadStyle):
+            raise ValueError("payload_style must be a PayloadStyle")
         _require_nonnegative(self.start_ms, "start_ms")
         _require_positive(self.interarrival_ms, "interarrival_ms")
         _require_positive(self.burst_gap_ms, "burst_gap_ms")
@@ -93,6 +110,12 @@ class SyntheticWorkloadConfig:
         _require_positive(self.pareto_shape, "pareto_shape")
         if self.sla_ms is not None:
             _require_positive(self.sla_ms, "sla_ms")
+        for probability, field_name in (
+            (self.semantic_ambiguity, "semantic_ambiguity"),
+            (self.semantic_noise, "semantic_noise"),
+        ):
+            if not isfinite(probability) or not 0 <= probability <= 1:
+                raise ValueError(f"{field_name} must be from 0 to 1")
         final_arrival_offset_ms = self.interarrival_ms * (self.burst_size - 1)
         if (
             self.arrival_pattern is ArrivalPattern.BURSTY
@@ -101,11 +124,50 @@ class SyntheticWorkloadConfig:
             raise ValueError("burst_gap_ms must not overlap consecutive bursts")
 
 
-_PAYLOADS = {
-    DurationClass.SHORT: "Classify a compact status update.",
-    DurationClass.MEDIUM: "Summarize a customer support case.",
-    DurationClass.LONG: "Analyze a multi-step production incident.",
+_CLASS_PAYLOADS = {
+    PayloadStyle.STANDARD: {
+        DurationClass.SHORT: "Classify a compact status update.",
+        DurationClass.MEDIUM: "Summarize a customer support case.",
+        DurationClass.LONG: "Analyze a multi-step production incident.",
+    },
+    PayloadStyle.SHIFTED: {
+        DurationClass.SHORT: "Triage a terse operational note.",
+        DurationClass.MEDIUM: "Assess an extended service inquiry.",
+        DurationClass.LONG: "Diagnose an interconnected platform outage.",
+    },
 }
+
+_AMBIGUOUS_PAYLOADS = {
+    PayloadStyle.STANDARD: (
+        "Review this request and respond.",
+        "Process this incoming task.",
+        "Handle the submitted work item.",
+    ),
+    PayloadStyle.SHIFTED: (
+        "Consider this new item carefully.",
+        "Work through the provided request.",
+        "Complete this queued operation.",
+    ),
+}
+
+
+def _payload(
+    rng: Random,
+    duration_class: DurationClass,
+    config: SyntheticWorkloadConfig,
+) -> str:
+    """Generate a visible semantic cue without changing workload truth."""
+
+    if rng.random() < config.semantic_ambiguity:
+        return rng.choice(_AMBIGUOUS_PAYLOADS[config.payload_style])
+
+    cue_class = duration_class
+    if rng.random() < config.semantic_noise:
+        other_classes = tuple(
+            candidate for candidate in DurationClass if candidate is not duration_class
+        )
+        cue_class = rng.choice(other_classes)
+    return _CLASS_PAYLOADS[config.payload_style][cue_class]
 
 
 def _arrival_ms(index: int, config: SyntheticWorkloadConfig) -> float:
@@ -170,6 +232,7 @@ def generate_workload(config: SyntheticWorkloadConfig) -> tuple[TraceJob, ...]:
     """
 
     rng = Random(config.seed)
+    semantic_rng = Random(config.seed ^ 0x5DEECE66D)
     jobs: list[TraceJob] = []
     for index in range(config.job_count):
         service_ms = _service_ms(rng, config)
@@ -180,7 +243,7 @@ def generate_workload(config: SyntheticWorkloadConfig) -> tuple[TraceJob, ...]:
                 item=WorkItem(
                     request_id=request_id,
                     arrival_ms=_arrival_ms(index, config),
-                    payload=_PAYLOADS[duration_class],
+                    payload=_payload(semantic_rng, duration_class, config),
                     input_units=_input_units(rng, service_ms),
                     sla_ms=config.sla_ms,
                 ),
